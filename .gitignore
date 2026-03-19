@@ -1,0 +1,13 @@
+node_modules
+serve.js
+.env.production
+.env.docker
+.env.development
+.dockerignore
+huggingTesting.js
+vaccitrack.http
+.env.example
+testEmail.js
+.env*
+
+

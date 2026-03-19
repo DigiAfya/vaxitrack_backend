@@ -1,27 +1,58 @@
-'use strict';
-
-/** @type {import('sequelize-cli').Migration} */
+"use strict";
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable("AuditLogs", {
-     id: {
-  type: Sequelize.INTEGER.UNSIGNED,
-  autoIncrement: true,
-  primaryKey: true,
-},
-admin_id: {
-  type: Sequelize.INTEGER.UNSIGNED,
-  allowNull: false,
-},
-  action: { type: Sequelize.STRING, allowNull: false },
-    target_type: { type: Sequelize.STRING, allowNull: false },
-    target_id: { type: Sequelize.INTEGER },
-    created_at: Sequelize.DATE,
-    updated_at: Sequelize.DATE,
+    await queryInterface.createTable("audit_logs", {
+      log_id: {
+        type: Sequelize.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+
+      user_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: "users",
+          key: "user_id",
+        },
+        onDelete: "CASCADE",
+      },
+
+      action: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
+
+      entity: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
+
+      entity_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      details: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+      },
+
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn("NOW")
+      },
+
+       updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn("NOW"),
+      },
     });
   },
+
   async down(queryInterface) {
-    await queryInterface.dropTable("AuditLogs");
+    await queryInterface.dropTable("audit_logs");
   },
 };

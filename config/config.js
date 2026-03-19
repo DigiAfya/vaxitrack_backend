@@ -1,19 +1,32 @@
+const path = require("path");
+const fs = require("fs");
+
+// Determine environment
+const env = process.env.NODE_ENV || "development";
+
+// Load the corresponding .env file if it exists
+const envPath = path.resolve(__dirname, `../.env.${env}`);
+if (fs.existsSync(envPath)) {
+  require("dotenv").config({ path: envPath });
+  console.log(`Loaded environment variables from ${envPath}`);
+} else {
+  require("dotenv").config(); // fallback to .env
+  console.log("Loaded environment variables from default .env");
+}
+
 module.exports = {
   development: {
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
+    url: process.env.DATABASE_URL,
+    dialect: "postgres",
+    logging: false
+  },
+  docker: {
+    url: process.env.DATABASE_URL,
     dialect: "postgres",
     logging: false
   },
   test: {
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
+    url: process.env.DATABASE_URL,
     dialect: "postgres",
     logging: false
   },

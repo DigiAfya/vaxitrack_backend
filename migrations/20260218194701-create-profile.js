@@ -4,31 +4,46 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable("Profiles", {
+    await queryInterface.createTable("profiles", {
       profile_id: {
-        type: Sequelize.INTEGER.UNSIGNED,
+        type: Sequelize.INTEGER,
         autoIncrement: true,
         primaryKey: true,
       },
       user_id: {
-        type: Sequelize.INTEGER.UNSIGNED,
+        type: Sequelize.INTEGER,
         allowNull: false,
-        references: { model: "Users", key: "user_id" },
+        references: { model: "users", key: "user_id" },
         onDelete: "CASCADE",
       },
-      full_name: { type: Sequelize.STRING, allowNull: false },
-      dob: { type: Sequelize.DATEONLY, allowNull: false },
+      first_name: { type: Sequelize.STRING, allowNull: false },
+      middle_name: { type: Sequelize.STRING,  allowNull: true,},
+      last_name: { type: Sequelize.STRING, allowNull: false },
+      date_of_birth: { type: Sequelize.DATEONLY, allowNull: false },
       gender: {
-        type: Sequelize.ENUM("Male", "Female", "Other"),
+        type: Sequelize.ENUM("male", "female", "prefer not to say"),
+      },
+      category: {
+        type: Sequelize.ENUM("child", "adult"),
         allowNull: false,
       },
-      category: { type: Sequelize.ENUM("Child", "Adult"), allowNull: false },
-      created_at: Sequelize.DATE,
-      updated_at: Sequelize.DATE,
-      deleted_at: Sequelize.DATE,
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn("NOW"),
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn("NOW"),
+      },
+      deleted_at: {
+      type: Sequelize.DATE,
+      allowNull: true,
+      },
     });
   },
   async down(queryInterface) {
-    await queryInterface.dropTable("Profiles");
+    await queryInterface.dropTable("profiles");
   },
 };

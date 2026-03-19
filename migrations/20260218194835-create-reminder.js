@@ -1,34 +1,67 @@
-'use strict';
-
-/** @type {import('sequelize-cli').Migration} */
+"use strict";
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable("Reminders", {
-     reminder_id: {
-  type: Sequelize.INTEGER.UNSIGNED,
-  autoIncrement: true,
-  primaryKey: true,
-},
-profile_id: {
-  type: Sequelize.INTEGER.UNSIGNED,
-  allowNull: false,
-  references: { model: "Profiles", key: "profile_id" },
-  onDelete: "CASCADE",
-},
-vaccine_id: {
-  type: Sequelize.INTEGER.UNSIGNED,
-  allowNull: false,
-  references: { model: "Vaccines", key: "vaccine_id" },
-  onDelete: "CASCADE",
-},
-      due_date: { type: Sequelize.DATEONLY },
-      status: { type: Sequelize.ENUM("NextDue", "Overdue") },
-      created_at: Sequelize.DATE,
-      updated_at: Sequelize.DATE,
+    await queryInterface.createTable("reminders", {
+      reminder_id: {
+        type: Sequelize.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+
+      profile_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: "profiles",
+          key: "profile_id",
+        },
+        onUpdate: "CASCADE",
+        onDelete: "CASCADE",
+      },
+
+      vaccine_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: "vaccines",
+          key: "vaccine_id",
+        },
+        onUpdate: "CASCADE",
+        onDelete: "CASCADE",
+      },
+
+      due_date: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+
+      status: {
+        type: Sequelize.ENUM("Due", "Overdue"),
+        defaultValue: "Due",
+      },
+
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn("NOW"),
+      },
+
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.fn("NOW"),
+      },
+
+      last_notified_at: {
+        type: Sequelize.DATE,
+        allowNull: true,
+        defaultValue: null,
+      },
     });
   },
-  async down(queryInterface) {
-    await queryInterface.dropTable("Reminders");
+
+  async down(queryInterface, Sequelize) {
+    await queryInterface.dropTable("reminders");
   },
 };

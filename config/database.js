@@ -1,30 +1,31 @@
 const { Sequelize } = require("sequelize");
-require("dotenv").config();
+const path = require("path");
+const dotenv = require("dotenv");
 
-const sequelize = new Sequelize(
-  process.env.DB_NAME,        
-  process.env.DB_USER,        
-  process.env.DB_PASSWORD,    
-  {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    dialect: "postgres",
-    logging: false,
-    define: {
-      underscored: true,     // created_at, updated_at
-      freezeTableName: true, 
-    },
-  }
-);
+const env = process.env.NODE_ENV || "development";
+
+dotenv.config({
+  path: path.resolve(__dirname, `../.env.${env}`)
+});
+
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: "postgres",
+  logging: false,
+  define: {
+    underscored: true,
+    freezeTableName: true,
+  },
+});
 
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    console.log("DB Connected Successfully");
+    console.log("Database connected successfully");
   } catch (error) {
-    console.error("DB connection error:", error.message);
-    process.exit(1);
+    console.error("Database connection error:", error.message);
   }
 };
+
+connectDB();
 
 module.exports = { sequelize, connectDB };

@@ -1,25 +1,44 @@
 version: "3.8"
 
 services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: vaxitrack_user
+      POSTGRES_PASSWORD: vaxitrack_pass
+      POSTGRES_DB: vaxitrack_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaxitrack_user -d vaxitrack_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   web:
     build: .
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - .env.docker
     depends_on:
-      - db
-
-  db:
-    image: postgres:15
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: vaxitrack_user
-      POSTGRES_PASSWORD: vaxitrack_pass
-      POSTGRES_DB: vaxitrack_db
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "
+      node scripts/wait-for-db.js &&
+      npx sequelize-cli db:migrate &&
+      [ \"$SKIP_SEED\" != \"true\" ] && npx sequelize-cli db:seed:all &&
+      npm run start
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

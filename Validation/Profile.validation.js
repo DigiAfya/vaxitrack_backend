@@ -1,10 +1,12 @@
 const Joi = require("joi");
 
 const profileSchema = Joi.object({
-  full_name: Joi.string().min(3).max(100).required(),
-  dob: Joi.date().required(),
-  gender: Joi.string().valid("Male", "Female", "Other").required(),
-  category: Joi.string().required(),
+  first_name: Joi.string().min(2).max(100).required(),
+  middle_name: Joi.string().max(100).optional(),
+  last_name: Joi.string().min(2).max(100).required(),
+  date_of_birth: Joi.date().required(),
+  gender: Joi.string().valid("male", "female", "prefer not to say").required(),
+  category: Joi.string().valid("child", "adult").required(),
 });
 
 module.exports = { profileSchema };

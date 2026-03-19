@@ -1,24 +1,65 @@
 const { Reminder, Profile, Vaccine, User } = require("../models");
+const { Parser } = require("json2csv");
+const ExcelJS = require("exceljs");
 const sendResponse = require("../utilities/response.util");
 const ApiError = require("../utilities/ApiErr.util");
 const { sendEmail } = require("../utilities/email.util");
+const { logAction } = require("../utilities/AuditLog.util");
+const { Op } = require("sequelize");
 
-//CREATE REMINDER
+/* ====== CREATE REMINDER ================= */
+
 const createReminder = async (req, res, next) => {
   try {
-    const { profileId } = req.params;
-    const { vaccineId, dueDate, status } = req.body;
 
-    if (!vaccineId || !dueDate) {
+    const profileId = req.user.role === "admin"
+      ? req.params.profileId
+      : req.activeProfile.profile_id;
+
+    const { vaccine_id, due_date, status } = req.body;
+
+    if (!vaccine_id || !due_date) {
       throw new ApiError(400, "Vaccine ID and due date are required");
+    }
+
+    const profile = await Profile.findByPk(profileId);
+
+    if (!profile) throw new ApiError(404, "Profile not found");
+
+    if (
+      req.user.role !== "admin" &&
+      profile.user_id !== req.user.user_id
+    ) {
+      throw new ApiError(403, "Access denied");
     }
 
     const reminder = await Reminder.create({
       profile_id: profileId,
-      vaccine_id: vaccineId,
-      due_date: dueDate,
-      status: status || "Due",
+      vaccine_id,
+      due_date,
+      status: status || "due",
     });
+
+    await logAction(
+      req.user.user_id,
+      "USER_CREATED_REMINDER",
+      "reminders",
+      reminder.reminder_id,
+      `Created reminder for vaccine ${vaccine_id}`
+    );
+
+    await reminderQueue.add(
+      "sendEmail",
+      { profileId },
+      {
+        jobId: `reminder-${profileId}-${todayString()}`,
+        removeOnComplete: true,
+        removeOnFail: true,
+        attempts: 3,
+        backoff: { type: "exponential", delay: 60000 },
+        delay: 5000,
+      }
+    );
 
     return sendResponse(res, {
       success: true,
@@ -26,108 +67,350 @@ const createReminder = async (req, res, next) => {
       data: reminder,
       statusCode: 201,
     });
+
   } catch (error) {
     next(error);
   }
 };
 
-//GET REMINDERS FOR A PROFILE.
+
+// GET REMINDERS (with ownership check + audit log)
 const getReminders = async (req, res, next) => {
   try {
-    const { profileId } = req.params;
+
+    const profileId = req.user.role === "admin"
+      ? req.params.profileId
+      : req.activeProfile.profile_id;
+
+    const profile = await Profile.findByPk(profileId);
+
+    if (!profile) throw new ApiError(404, "Profile not found");
+
+    if (
+      req.user.role !== "admin" &&
+      profile.user_id !== req.user.user_id
+    ) {
+      throw new ApiError(403, "Access denied");
+    }
 
     const reminders = await Reminder.findAll({
       where: { profile_id: profileId },
-      include: [{ model: Vaccine }],
+      include: [{ model: Vaccine, as: "vaccine" }],
       order: [["due_date", "ASC"]],
     });
+    await logAction(
+      req.user.user_id,
+      "FETCHED_REMINDERS",
+      "reminders",
+      0,
+      `Fetched reminders for profile ${profileId}`
+    );
 
     return sendResponse(res, {
       success: true,
       message: "Reminders fetched successfully",
       data: reminders,
     });
+
   } catch (error) {
     next(error);
   }
 };
 
-//GENERATE OVERDUE REMINDERS
-const generateOverdueReminders = async (profileId) => {
+
+// UPDATE REMINDER (with ownership check + audit log)
+const updateReminder = async (req, res, next) => {
   try {
-    const today = new Date();
 
-    const reminders = await Reminder.findAll({ where: { profile_id: profileId } });
+    const profileId = req.user.role === "admin"
+      ? req.params.profileId
+      : req.activeProfile.profile_id;
 
-    for (let reminder of reminders) {
-      if (reminder.due_date && new Date(reminder.due_date) < today && reminder.status !== "Overdue") {
-        reminder.status = "Overdue";
-        await reminder.save();
-      }
+    const { reminderId } = req.params;
+    const { vaccine_id, due_date, status } = req.body;
+
+    const profile = await Profile.findByPk(profileId);
+
+    if (!profile) throw new ApiError(404, "Profile not found");
+
+    if (
+      req.user.role !== "admin" &&
+      profile.user_id !== req.user.user_id
+    ) {
+      throw new ApiError(403, "Access denied");
     }
+
+    const reminder = await Reminder.findByPk(reminderId);
+
+    if (!reminder || reminder.profile_id !== parseInt(profileId)) {
+      throw new ApiError(404, "Reminder not found");
+    }
+
+    await reminder.update({ vaccine_id, due_date, status });
+    
+    await logAction(
+      req.user.user_id,
+      "USER_UPDATED_REMINDER",
+      "reminders",
+      reminder.reminder_id,
+      `Updated reminder ${reminder.reminder_id}`
+    );
+
+    await reminderQueue.add(
+      "sendEmail",
+      { profileId },
+      {
+        jobId: `reminder-${profileId}-${todayString()}`,
+        removeOnComplete: true,
+        removeOnFail: true,
+        attempts: 3,
+        backoff: { type: "exponential", delay: 60000 },
+      }
+    );
+
+    return sendResponse(res, {
+      success: true,
+      message: "Reminder updated successfully",
+      data: reminder,
+    });
+
   } catch (error) {
-    console.error("Error generating overdue reminders:", error.message);
+    next(error);
   }
 };
 
-//SEND EMAIL REMINDERS (HTML Template)
-const sendReminderEmails = async (profileId) => {
+/* ================= GENERATE OVERDUE ================= */
+
+const generateOverdueReminders = async (profileId) => {
+
+  const today = new Date();
+
+  const reminders = await Reminder.findAll({
+    where: { profile_id: profileId }
+  });
+
+  for (const reminder of reminders) {
+
+    if (
+      reminder.due_date &&
+      new Date(reminder.due_date) < today &&
+      reminder.status !== "overdue"
+    ) {
+      reminder.status = "overdue";
+
+      await reminder.save();
+      await logAction(
+        reminder.profile_id,
+        "REMINDER_MARKED_OVERDUE",
+        "reminders",
+        reminder.reminder_id,
+        `Reminder ${reminder.reminder_id} marked overdue`
+      );
+    }
+  }
+};
+
+
+
+/* ================= DELETE REMINDER ================= */
+
+const deleteReminder = async (req, res, next) => {
   try {
-    const reminders = await Reminder.findAll({
-      where: { profile_id: profileId, status: "Overdue" },
-      include: [
-        {
-          model: Profile,
-          as: "profile",
-          include: [{ model: User, as: "user", attributes: ["email", "full_name"] }],
-        },
-        { model: Vaccine, as: "vaccine" },
-      ],
+
+    const profileId = req.user.role === "admin"
+      ? req.params.profileId
+      : req.activeProfile.profile_id;
+
+    const { reminderId } = req.params;
+
+    const profile = await Profile.findByPk(profileId);
+
+    if (!profile) throw new ApiError(404, "Profile not found");
+
+    if (
+      req.user.role !== "admin" &&
+      profile.user_id !== req.user.user_id
+    ) {
+      throw new ApiError(403, "Access denied");
+    }
+
+    const reminder = await Reminder.findByPk(reminderId);
+
+    if (!reminder || reminder.profile_id !== parseInt(profileId)) {
+      throw new ApiError(404, "Reminder not found");
+    }
+
+    await reminder.destroy();
+    
+    await logAction(
+      req.user.user_id,
+      "USER_DELETED_REMINDER",
+      "reminders",
+      reminder.reminder_id,
+      `Deleted reminder ${reminder.reminder_id}`
+    );
+
+    return sendResponse(res, {
+      success: true,
+      message: "Reminder deleted successfully",
     });
 
-    for (let reminder of reminders) {
-      const email = reminder.profile.user.email;
-      const userName = reminder.profile.user.full_name || "User";
-      const vaccineName = reminder.vaccine.name;
-      const dueDate = reminder.due_date;
+  } catch (error) {
+    next(error);
+  }
+};
 
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; background-color: #f9f9f9;">
-          <h2 style="color: #2c3e50; text-align: center;">VacciTrack Vaccine Reminder</h2>
-          <p style="font-size: 16px; color: #333;">
-            Dear ${userName},
-          </p>
-          <p style="font-size: 16px; color: #333;">
-            We noticed that your vaccine <strong style="color: #e74c3c;">${vaccineName}</strong> was due on 
-            <strong style="color: #e74c3c;">${dueDate}</strong> and is now overdue.
-          </p>
-          <p style="font-size: 16px; color: #333;">
-            It’s important to stay protected. Please schedule your vaccination as soon as possible.
-          </p>
-          <div style="text-align: center; margin: 20px 0;">
-            <a href="https://your-app-link.com/schedule" 
-               style="background-color: #27ae60; color: #fff; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-              Schedule Now
-            </a>
-          </div>
-          <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
-          <p style="font-size: 14px; color: #777; text-align: center;">
-            Stay safe and healthy,<br/>
-            <strong>The VaxiTrack Team</strong>
-          </p>
-        </div>
-      `;
+/* ================= SEND REMINDER EMAILS ================= */
 
-      await sendEmail(email, "Vaccine Overdue Reminder", htmlContent);
+
+const sendReminderEmails = async (profileId) => {
+
+  const reminders = await Reminder.findAll({
+    where: {
+      profile_id: profileId,
+      status: "Overdue",
+      [Op.or]: [
+        { last_notified_at: null },
+        { last_notified_at: { [Op.lt]: new Date() } }
+      ]
+    },
+    include: [
+      {
+        model: Profile,
+        as: "profile",
+        include: [{ model: User, as: "user", attributes: ["email"] }]
+      },
+      { model: Vaccine, as: "vaccine" }
+    ]
+  });
+
+  for (const reminder of reminders) {
+
+    const email = reminder?.profile?.user?.email;
+
+    if (!email) continue;
+
+    const vaccineName = reminder.vaccine?.name || "Vaccine";
+
+    const htmlContent = `
+      <h2>VacciTrack Vaccine Reminder</h2>
+      <p>Your vaccine <strong>${vaccineName}</strong> is overdue.</p>
+      <p>Please schedule your vaccination as soon as possible.</p>
+    `;
+
+    await sendEmail(email, "Vaccine Overdue Reminder", htmlContent);
+
+    reminder.last_notified_at = new Date();
+
+    await reminder.save();
+
+    await logAction(
+      reminder.profile.user_id,
+      "REMINDER_EMAIL_SENT",
+      "reminders",
+      reminder.reminder_id,
+      `Sent overdue reminder email for vaccine ${vaccineName}`
+    );
+  }
+};
+
+//  Export reminders (CSV/Excel with summary sheet)
+const exportReminders = async (req, res, next) => {
+  try {
+    const { format = "csv", search = "", sort = "due_date", order = "ASC" } = req.query;
+
+    const reminders = await Reminder.findAll({
+      include: [
+        { model: Vaccine, as: "vaccine" },
+        { model: Profile, as: "profile", include: [{ model: User, as: "user", attributes: ["email"] }] },
+      ],
+      where: search ? { status: { [Op.like]: `%${search}%` } } : undefined,
+      order: [[sort, order]],
+    });
+
+    if (!reminders || reminders.length === 0) throw new ApiError(404, "No reminders found");
+
+    const data = reminders.map((r) => ({
+      reminder_id: r.reminder_id,
+      profile_id: r.profile_id,
+      vaccine: r.vaccine ? r.vaccine.name : "N/A",
+      due_date: r.due_date,
+      status: r.status,
+      user_email: r.profile?.user?.email || "N/A",
+      created_at: r.created_at,
+    }));
+
+    if (format === "xlsx") {
+      const workbook = new ExcelJS.Workbook();
+
+      // Main sheet
+      const sheet = workbook.addWorksheet("Reminders");
+      sheet.columns = [
+        { header: "Reminder ID", key: "reminder_id", width: 15 },
+        { header: "Profile ID", key: "profile_id", width: 15 },
+        { header: "Vaccine", key: "vaccine", width: 25 },
+        { header: "Due Date", key: "due_date", width: 20 },
+        { header: "Status", key: "status", width: 15 },
+        { header: "User Email", key: "user_email", width: 30 },
+        { header: "Created At", key: "created_at", width: 20 },
+      ];
+
+      sheet.getRow(1).eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+        cell.alignment = { horizontal: "center" };
+      });
+
+      data.forEach((d) => sheet.addRow(d));
+
+      // Summary sheet by status
+      const summarySheet = workbook.addWorksheet("Summary");
+      summarySheet.addRow(["Status", "Count", "Percentage"]);
+
+      const totalReminders = data.length;
+      const statusCounts = {};
+
+      data.forEach((r) => {
+        statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+      });
+
+      Object.entries(statusCounts).forEach(([status, count]) => {
+        summarySheet.addRow([
+          status,
+          count,
+          totalReminders > 0 ? `${((count / totalReminders) * 100).toFixed(1)}%` : "0%",
+        ]);
+      });
+
+      summarySheet.getRow(1).eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFB0C4DE" } };
+      });
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", "attachment; filename=reminders.xlsx");
+
+      await workbook.xlsx.write(res);
+      res.end();
+    } else {
+      const parser = new Parser({ fields: Object.keys(data[0]) });
+      const csv = parser.parse(data);
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=reminders.csv");
+      res.send(csv);
     }
   } catch (error) {
-    console.error("Error sending reminder emails:", error.message);
+    next(error);
   }
 };
 
 module.exports = {
   createReminder,
   getReminders,
+  updateReminder,
+  deleteReminder,
   generateOverdueReminders,
   sendReminderEmails,
+  exportReminders, 
 };

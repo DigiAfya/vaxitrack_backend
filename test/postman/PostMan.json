@@ -1,0 +1,105 @@
+// Auth registre
+
+{
+  "email": "testuser@example.com",
+  "password": "Password123!",
+  "role": "user"
+}
+
+
+// Login 
+
+{
+  "email": "testuser@example.com",
+  "password": "Password123!"
+}
+
+//Refresh Token
+
+{
+  "token": "{{refreshToken}}"
+}
+
+//Logout
+
+{
+  "token": "{{refreshToken}}"
+}
+
+//👤 Profiles Create Profile
+
+{
+  "first_name": "John",
+  "middle_name": "A",
+  "last_name": "Doe",
+  "date_of_birth": "2015-06-01",
+  "gender": "male",
+  "category": "child"
+}
+
+// Update Profile
+
+{
+  "first_name": "Johnny",
+  "last_name": "Doe",
+  "date_of_birth": "2015-06-01",
+  "gender": "male",
+  "category": "child"
+}
+
+// 💉 Vaccines Create Vaccine 
+
+{
+  "name": "MMR",
+  "age_range": "9 months",
+  "category": "child",
+  "description": "Protects against measles, mumps, rubella",
+  "info": "Standard childhood immunization",
+  "doses": [
+    {
+      "dose_number": 1,
+      "recommended_age": "9 months",
+      "min_age_days": 270,
+      "max_age_days": 365,
+      "description": "First dose of MMR"
+    },
+    {
+      "dose_number": 2,
+      "recommended_age": "15 months",
+      "min_gap_days": 180,
+      "description": "Booster dose of MMR"
+    }
+  ]
+}
+
+// 📊 Vaccine Status Update Vaccine Status
+
+{
+  "status": "Taken",
+  "administered_date": "2026-03-17",
+  "next_due_date": "2027-03-17"
+}
+
+// ⏰ Reminders Create Reminder
+
+{
+  "vaccine_id": 1,
+  "due_date": "2026-03-25",
+  "status": "Due"
+}
+
+// Update Reminder
+
+{
+  "vaccine_id": 1,
+  "due_date": "2026-04-01",
+  "status": "Overdue"
+}
+
+// Recommendations Get Recommendations (with filters)
+
+{
+  "priority": "high",
+  "status": "Due",
+  "dueWithin": 30
+}

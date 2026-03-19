@@ -1,89 +1,132 @@
-require("dotenv").config();
+"use strict";
+
+const path = require("path");
+const dotenv = require("dotenv");
+const env = process.env.NODE_ENV || "development";
+dotenv.config({ path: path.resolve(__dirname, `.env.${env}`) });
+
+// Core modules
+const express = require("express");
+const helmet = require("helmet");
+const cors = require("cors");
 const Sentry = require("@sentry/node");
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  tracesSampleRate: 1.0
-});
-const helmet = require("helmet");
-const express = require("express");
-const cors = require("cors");
-const cron = require("node-cron");
+// Models
 const { sequelize } = require("./models");
-const { Profile } = require("./models");
 
+// Middleware
 const errorHandler = require("./middleware/error.middleware");
-const { protect } = require("./middleware/auth.middleware");  
+const { protect } = require("./middleware/auth.middleware");
+const { authorize } = require("./middleware/role.middleware");
 
-// ROUTES
+// Routes
 const authRoutes = require("./routes/auth.Route");
 const profileRoutes = require("./routes/profile.Route");
 const vaccineRoutes = require("./routes/vaccine.Routes");
 const reminderRoutes = require("./routes/Reminder.Route");
 const dashboardRoutes = require("./routes/dashboard.Route");
 const recommendationRoutes = require("./routes/recommendation.Route");
-const { generateOverdueReminders, sendReminderEmails } = require("./controllers/Reminder.Controller");
+const queueDashboardRoutes = require("./routes/QueueDashboard.Route");
+const faqRoutes = require("./routes/chat.Route");
+
+// Reminder Queue & Repeatable Jobs
+const reminderQueue = require("./Queue/reminder.queue");
+const setupReminderJobs = require("./Queue/reminder.repeatable");
+
+// Bull Board
+const { createBullBoard } = require("@bull-board/api");
+const { BullAdapter } = require("@bull-board/api/bullAdapter");
+const { ExpressAdapter } = require("@bull-board/express");
+const { logAction } = require("./utilities/AuditLog.util");
 
 const app = express();
+app.disable("x-powered-by");
 
-// MIDDLEWARE
+// --- Sentry ---
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 1.0 });
+}
+
+// --- Middleware ---
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : "*"
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// HEALTH CHECK
-app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+// --- Health Check ---
+app.get("/health", async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.status(200).json({ status: "UP", database: "Connected", uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: "DOWN", error: err.message });
+  }
+});
 
-// PUBLIC ROUTES
-app.use("/api/auth", authRoutes);
+// --- API Routes ---
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/faqs", faqRoutes);
+app.use("/api/v1/profiles", protect, profileRoutes);
+app.use("/api/v1/vaccines", protect, vaccineRoutes);
+app.use("/api/v1/reminders", protect, reminderRoutes);
+app.use("/api/v1/dashboard", protect, dashboardRoutes);
+app.use("/api/v1/recommendations", protect, recommendationRoutes);
+app.use("/api/v1/admin/queue-dashboard", queueDashboardRoutes);
 
-// PROTECTED ROUTES 
-app.use("/api/profiles", protect, profileRoutes);
-app.use("/api/vaccines", protect, vaccineRoutes);
-app.use("/api/reminders", protect, reminderRoutes);
-app.use("/api/dashboard", protect, dashboardRoutes);
-app.use("/api/recommendations", protect, recommendationRoutes);
 
-// ERROR HANDLER
-Sentry.setupExpressErrorHandler(app);
+// --- Bull Board (Admin Only) ---
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath("/admin/queues");
+
+createBullBoard({
+  queues: [new BullAdapter(reminderQueue)],
+  serverAdapter,
+});
+// Protect Bull Board with RBAC + Audit Logging
+app.use(
+  "/admin/queues",
+  protect,
+  authorize("admin"),
+  async (req, res, next) => {
+    await logAction(
+      req.user.user_id,
+      "ADMIN_VIEWED_BULL_BOARD",
+      "queues",
+      0,
+      "Admin accessed Bull Board"
+    );
+    next();
+  },
+  serverAdapter.getRouter()
+);
+
+// --- Error Handler ---
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 app.use(errorHandler);
 
-// DATABASE CONNECTION
-async function startServer() {
+// --- Start Server ---
+const startServer = async () => {
   try {
     await sequelize.authenticate();
     console.log("Database connected successfully");
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log("Models synced");
 
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`Server running on port ${process.env.PORT || 5000}`);
-    });
+    // Setup repeatable reminder jobs
+    await setupReminderJobs();
+    console.log("Reminder repeatable jobs registered");
+
+    const port = process.env.PORT || 5000;
+    app.listen(port, () => console.log(`Server running on port ${port}`));
   } catch (error) {
     console.error("Unable to connect to database:", error);
+    process.exit(1);
   }
-}
+};
 
 startServer();
-
-/// CRON JOB — runs every day at 8:00 AM
-cron.schedule("0 8 * * *", async () => {
-  console.log("⏰ Running vaccine reminder cron job...");
-
-  try {
-    const { Profile } = require("./models");
-
-    const profiles = await Profile.findAll();
-
-    for (let profile of profiles) {
-      await generateOverdueReminders(profile.profile_id);   // Mark overdue reminders
-      await sendReminderEmails(profile.profile_id);         // Send reminder emails for overdue vaccines
-    }
-
-    console.log("Reminder job completed successfully");
-  } catch (error) {
-    console.error("Error running reminder job:", error);
-  }
-});

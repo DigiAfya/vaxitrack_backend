@@ -1,4 +1,4 @@
-const calculateAge = async (dob) => {
+const calculateAge = (dob) => {
   const birthDate = new Date(dob);
   const diff = Date.now() - birthDate.getTime();
   const age = new Date(diff).getUTCFullYear() - 1970;
@@ -6,3 +6,4 @@ const calculateAge = async (dob) => {
 };
 
 module.exports = { calculateAge };
+
