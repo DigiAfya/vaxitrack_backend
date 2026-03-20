@@ -1,25 +1,20 @@
 "use strict";
-
 const path = require("path");
 const dotenv = require("dotenv");
 const env = process.env.NODE_ENV || "development";
 dotenv.config({ path: path.resolve(__dirname, `.env.${env}`) });
 
-// Core modules
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const Sentry = require("@sentry/node");
 
-// Models
 const { sequelize } = require("./models");
 
-// Middleware
 const errorHandler = require("./middleware/error.middleware");
 const { protect } = require("./middleware/auth.middleware");
 const { authorize } = require("./middleware/role.middleware");
 
-// Routes
 const authRoutes = require("./routes/auth.Route");
 const profileRoutes = require("./routes/profile.Route");
 const vaccineRoutes = require("./routes/vaccine.Routes");
@@ -29,25 +24,27 @@ const recommendationRoutes = require("./routes/recommendation.Route");
 const queueDashboardRoutes = require("./routes/QueueDashboard.Route");
 const faqRoutes = require("./routes/chat.Route");
 
-// Reminder Queue & Repeatable Jobs
-const reminderQueue = require("./Queue/reminder.queue");
-const setupReminderJobs = require("./Queue/reminder.repeatable");
+let reminderQueue, setupReminderJobs;
+let createBullBoard, BullAdapter, ExpressAdapter;
+try {
+  reminderQueue = require("./Queue/reminder.queue");
+  setupReminderJobs = require("./Queue/reminder.repeatable");
+  createBullBoard = require("@bull-board/api").createBullBoard;
+  BullAdapter = require("@bull-board/api/bullAdapter").BullAdapter;
+  ExpressAdapter = require("@bull-board/express").ExpressAdapter;
+} catch (err) {
+  console.warn("Queue/Bull Board not available:", err.message);
+}
 
-// Bull Board
-const { createBullBoard } = require("@bull-board/api");
-const { BullAdapter } = require("@bull-board/api/bullAdapter");
-const { ExpressAdapter } = require("@bull-board/express");
 const { logAction } = require("./utilities/AuditLog.util");
 
 const app = express();
 app.disable("x-powered-by");
 
-// --- Sentry ---
 if (process.env.SENTRY_DSN) {
   Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 1.0 });
 }
 
-// --- Middleware ---
 app.use(helmet());
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : "*"
@@ -55,7 +52,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --- Health Check ---
 app.get("/health", async (req, res) => {
   try {
     await sequelize.authenticate();
@@ -65,7 +61,6 @@ app.get("/health", async (req, res) => {
   }
 });
 
-// --- API Routes ---
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/faqs", faqRoutes);
 app.use("/api/v1/profiles", protect, profileRoutes);
@@ -75,40 +70,30 @@ app.use("/api/v1/dashboard", protect, dashboardRoutes);
 app.use("/api/v1/recommendations", protect, recommendationRoutes);
 app.use("/api/v1/admin/queue-dashboard", queueDashboardRoutes);
 
+if (ExpressAdapter && reminderQueue) {
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath("/admin/queues");
+  createBullBoard({
+    queues: [new BullAdapter(reminderQueue)],
+    serverAdapter,
+  });
+  app.use(
+    "/admin/queues",
+    protect,
+    authorize("admin"),
+    async (req, res, next) => {
+      await logAction(req.user.user_id, "ADMIN_VIEWED_BULL_BOARD", "queues", 0, "Admin accessed Bull Board");
+      next();
+    },
+    serverAdapter.getRouter()
+  );
+}
 
-// --- Bull Board (Admin Only) ---
-const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath("/admin/queues");
-
-createBullBoard({
-  queues: [new BullAdapter(reminderQueue)],
-  serverAdapter,
-});
-// Protect Bull Board with RBAC + Audit Logging
-app.use(
-  "/admin/queues",
-  protect,
-  authorize("admin"),
-  async (req, res, next) => {
-    await logAction(
-      req.user.user_id,
-      "ADMIN_VIEWED_BULL_BOARD",
-      "queues",
-      0,
-      "Admin accessed Bull Board"
-    );
-    next();
-  },
-  serverAdapter.getRouter()
-);
-
-// --- Error Handler ---
 if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
 app.use(errorHandler);
 
-// --- Start Server ---
 const startServer = async () => {
   try {
     await sequelize.authenticate();
@@ -117,9 +102,10 @@ const startServer = async () => {
     await sequelize.sync();
     console.log("Models synced");
 
-    // Setup repeatable reminder jobs
-    await setupReminderJobs();
-    console.log("Reminder repeatable jobs registered");
+    if (setupReminderJobs) {
+      await setupReminderJobs();
+      console.log("Reminder repeatable jobs registered");
+    }
 
     const port = process.env.PORT || 5000;
     app.listen(port, () => console.log(`Server running on port ${port}`));
