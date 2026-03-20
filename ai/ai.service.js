@@ -5,8 +5,8 @@ dotenv.config();
 const HF_API_KEY = process.env.HUGGINGFACE_API_KEY;
 const OR_API_KEY = process.env.OPENROUTER_API_KEY;
 
-if (!HF_API_KEY) throw new Error("HUGGINGFACE_API_KEY not set");
-if (!OR_API_KEY) throw new Error("OPENROUTER_API_KEY not set");
+if (!HF_API_KEY) console.warn("WARNING: HUGGINGFACE_API_KEY not set - AI chat disabled");
+if (!OR_API_KEY) console.warn("WARNING: OPENROUTER_API_KEY not set - AI chat disabled");
 
 /**
  * Get embedding vector from Hugging Face Router
