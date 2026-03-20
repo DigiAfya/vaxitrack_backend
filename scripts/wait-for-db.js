@@ -6,6 +6,8 @@ if (!dbUrl) {
   process.exit(1);
 }
 
+console.log("DATABASE_URL starts with:", dbUrl.substring(0, 30) + "...");
+
 const sequelize = new Sequelize(dbUrl, {
   dialect: "postgres",
   logging: false,
@@ -15,7 +17,7 @@ const sequelize = new Sequelize(dbUrl, {
 });
 
 const waitForDB = async () => {
-  let retries = 10;
+  let retries = 5;
   while (retries > 0) {
     try {
       await sequelize.authenticate();
@@ -23,11 +25,12 @@ const waitForDB = async () => {
       process.exit(0);
     } catch (err) {
       retries--;
-      console.log("Waiting for database... (" + retries + " retries left)");
+      console.log("DB error:", err.message);
+      console.log("Retries left:", retries);
       await new Promise(res => setTimeout(res, 3000));
     }
   }
-  console.error("Could not connect to database after 10 attempts");
+  console.error("Could not connect to database");
   process.exit(1);
 };
 
