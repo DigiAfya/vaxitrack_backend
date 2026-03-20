@@ -4,13 +4,19 @@ const dotenv = require("dotenv");
 
 const env = process.env.NODE_ENV || "development";
 
-dotenv.config({
-  path: path.resolve(__dirname, `../.env.${env}`)
-});
+if (env !== "docker" && env !== "production") {
+  dotenv.config({ path: path.resolve(__dirname, `../.env.${env}`) });
+}
+
+const dialectOptions = {};
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes("render.com")) {
+  dialectOptions.ssl = { require: true, rejectUnauthorized: false };
+}
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
   logging: false,
+  dialectOptions,
   define: {
     underscored: true,
     freezeTableName: true,
