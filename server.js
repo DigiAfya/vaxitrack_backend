@@ -103,8 +103,12 @@ const startServer = async () => {
     console.log("Models synced");
 
     if (setupReminderJobs) {
-      await setupReminderJobs();
-      console.log("Reminder repeatable jobs registered");
+      try {
+        await setupReminderJobs();
+        console.log("Reminder repeatable jobs registered");
+      } catch (err) {
+        console.warn("Reminder jobs skipped - Redis not available:", err.message);
+      }
     }
 
     const port = process.env.PORT || 5000;
