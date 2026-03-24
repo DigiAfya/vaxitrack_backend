@@ -16,7 +16,7 @@ const getRecommendations = async (profile, filters = {}) => {
 
   const statuses = await VaccineStatus.findAll({
     where: whereClause,
-    include: [{ model: Vaccine }],
+    include: [{ model: Vaccine, as: "vaccine" }],
     order: [["due_date", "ASC"]],
   });
 
@@ -43,7 +43,7 @@ const getRecommendations = async (profile, filters = {}) => {
 
     if (priorityLevel !== "None") {
       const rec = {
-        vaccine: s.Vaccine.name,
+        vaccine: s.vaccine.name,
         due_date: s.due_date,
         status: s.status,
         priority: priorityLevel,
