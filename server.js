@@ -71,6 +71,15 @@ app.use("/api/v1/dashboard", protect, dashboardRoutes);
 app.use("/api/v1/recommendations", protect, recommendationRoutes);
 app.use("/api/v1/admin/queue-dashboard", queueDashboardRoutes);
 app.use("/api/v1/vaxibot", vaxibotRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/faqs", faqRoutes);
+app.use("/api/profiles", protect, profileRoutes);
+app.use("/api/vaccines", protect, vaccineRoutes);
+app.use("/api/reminders", protect, reminderRoutes);
+app.use("/api/dashboard", protect, dashboardRoutes);
+app.use("/api/recommendations", protect, recommendationRoutes);
+app.use("/api/admin/queue-dashboard", queueDashboardRoutes);
+app.use("/api/vaxibot", vaxibotRoutes);
 
 if (ExpressAdapter && reminderQueue) {
   const serverAdapter = new ExpressAdapter();
