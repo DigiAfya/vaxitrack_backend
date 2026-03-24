@@ -21,7 +21,7 @@ const activeProfile = async (req, res, next) => {
     }
 
     // attach profile to request
-    req.profile = profile;
+    req.activeprofile = profile;
 
     next();
   } catch (error) {
