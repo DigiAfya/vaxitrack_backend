@@ -8,6 +8,7 @@ const { registerSchema, loginSchema } = require("../Validation/Auth.validation")
 const {
   register,
   login,
+  googleLogin,
   deleteMyAccount,
   refreshToken,
   logout,
@@ -20,6 +21,7 @@ const {
 router.post("/register", validate(registerSchema), register);
 router.post("/login", validate(loginSchema), login);
 router.post("/refresh", refreshToken);
+router.post("/google", googleLogin);
 
 // USER ROUTES 
 router.post("/logout", authorize("user"), logout);

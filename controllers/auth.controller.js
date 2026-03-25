@@ -240,9 +240,59 @@ const adminDeleteUser = async (req, res, next) => {
   }
 };
 
+// GOOGLE LOGIN
+const googleLogin = async (req, res, next) => {
+  try {
+    const { email, name } = req.body;
+
+    if (!email) throw new ApiError(400, "Email is required");
+
+    let user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      const randomPassword = require("crypto").randomBytes(32).toString("hex");
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      user = await User.create({
+        email,
+        password_hash: hashedPassword,
+        role: "user",
+      });
+    }
+
+    const accessToken = await generateToken({
+      user_id: user.user_id,
+      role: user.role,
+    });
+
+    const refreshTkn = jwt.sign(
+      { user_id: user.user_id, role: user.role },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+    );
+
+    await TokenStore.create({
+      user_id: user.user_id,
+      token: refreshTkn,
+      type: "refresh",
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    });
+
+    return sendResponse(res, {
+      success: true,
+      message: "Google login successful",
+      data: { accessToken, refreshToken: refreshTkn },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 module.exports = { 
   register, 
-  login, 
+  login,
+  googleLogin, 
   refreshToken, 
   logout, 
   deleteMyAccount,
