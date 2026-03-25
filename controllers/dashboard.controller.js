@@ -16,7 +16,7 @@ const getDashboard = async (req, res, next) => {
 
     const statuses = await VaccineStatus.findAll({
       where: { profile_id: id },
-      include: [{ model: Vaccine }],
+      include: [{ model: Vaccine, as: "vaccine" }],
       order: [["due_date", "ASC"]],
     });
 
@@ -110,7 +110,7 @@ const listAllDashboards = async (req, res, next) => {
     for (const profile of profiles) {
       const statuses = await VaccineStatus.findAll({
         where: { profile_id: profile.profile_id },
-        include: [{ model: Vaccine }],
+        include: [{ model: Vaccine, as: "vaccine" }],
         order: [["due_date", "ASC"]],
       });
 
@@ -190,7 +190,7 @@ const exportDashboards = async (req, res, next) => {
     for (const profile of profiles) {
       const statuses = await VaccineStatus.findAll({
         where: { profile_id: profile.profile_id },
-        include: [{ model: Vaccine }],
+        include: [{ model: Vaccine, as: "vaccine" }],
         order: [["due_date", "ASC"]],
       });
 

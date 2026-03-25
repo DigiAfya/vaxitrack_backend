@@ -23,6 +23,7 @@ const dashboardRoutes = require("./routes/dashboard.Route");
 const recommendationRoutes = require("./routes/recommendation.Route");
 const queueDashboardRoutes = require("./routes/QueueDashboard.Route");
 const faqRoutes = require("./routes/chat.Route");
+const vaxibotRoutes = require("./routes/vaxibot.Route");
 
 let reminderQueue, setupReminderJobs;
 let createBullBoard, BullAdapter, ExpressAdapter;
@@ -69,6 +70,16 @@ app.use("/api/v1/reminders", protect, reminderRoutes);
 app.use("/api/v1/dashboard", protect, dashboardRoutes);
 app.use("/api/v1/recommendations", protect, recommendationRoutes);
 app.use("/api/v1/admin/queue-dashboard", queueDashboardRoutes);
+app.use("/api/v1/vaxibot", vaxibotRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/faqs", faqRoutes);
+app.use("/api/profiles", protect, profileRoutes);
+app.use("/api/vaccines", protect, vaccineRoutes);
+app.use("/api/reminders", protect, reminderRoutes);
+app.use("/api/dashboard", protect, dashboardRoutes);
+app.use("/api/recommendations", protect, recommendationRoutes);
+app.use("/api/admin/queue-dashboard", queueDashboardRoutes);
+app.use("/api/vaxibot", vaxibotRoutes);
 
 if (ExpressAdapter && reminderQueue) {
   const serverAdapter = new ExpressAdapter();

@@ -20,8 +20,11 @@ const activeProfile = async (req, res, next) => {
       return next(new ApiError(404, "Profile not found or not authorized"));
     }
 
+
     // attach profile to request
-    req.profile = profile;
+    req.activeProfile = profile;
+  
+
 
     next();
   } catch (error) {

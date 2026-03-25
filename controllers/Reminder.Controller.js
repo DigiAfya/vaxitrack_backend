@@ -8,36 +8,33 @@ const { logAction } = require("../utilities/AuditLog.util");
 const { Op } = require("sequelize");
 
 /* ====== CREATE REMINDER ================= */
-
 const createReminder = async (req, res, next) => {
   try {
-
     const profileId = req.user.role === "admin"
       ? req.params.profileId
       : req.activeProfile.profile_id;
 
-    const { vaccine_id, due_date, status } = req.body;
+    const { vaccine_id, start_time, end_time, status, recurrence_rule, external_event_id } = req.body;
 
-    if (!vaccine_id || !due_date) {
-      throw new ApiError(400, "Vaccine ID and due date are required");
+    if (!vaccine_id || !start_time) {
+      throw new ApiError(400, "Vaccine ID and start time are required");
     }
 
     const profile = await Profile.findByPk(profileId);
-
     if (!profile) throw new ApiError(404, "Profile not found");
 
-    if (
-      req.user.role !== "admin" &&
-      profile.user_id !== req.user.user_id
-    ) {
+    if (req.user.role !== "admin" && profile.user_id !== req.user.user_id) {
       throw new ApiError(403, "Access denied");
     }
 
     const reminder = await Reminder.create({
       profile_id: profileId,
       vaccine_id,
-      due_date,
-      status: status || "due",
+      start_time,
+      end_time,
+      recurrence_rule,
+      external_event_id,
+      status: status || "Due",
     });
 
     await logAction(
@@ -46,19 +43,6 @@ const createReminder = async (req, res, next) => {
       "reminders",
       reminder.reminder_id,
       `Created reminder for vaccine ${vaccine_id}`
-    );
-
-    await reminderQueue.add(
-      "sendEmail",
-      { profileId },
-      {
-        jobId: `reminder-${profileId}-${todayString()}`,
-        removeOnComplete: true,
-        removeOnFail: true,
-        attempts: 3,
-        backoff: { type: "exponential", delay: 60000 },
-        delay: 5000,
-      }
     );
 
     return sendResponse(res, {
@@ -73,31 +57,27 @@ const createReminder = async (req, res, next) => {
   }
 };
 
-
 // GET REMINDERS (with ownership check + audit log)
+/* ====== GET REMINDERS (with summary + notifications) ================= */
 const getReminders = async (req, res, next) => {
   try {
-
     const profileId = req.user.role === "admin"
       ? req.params.profileId
       : req.activeProfile.profile_id;
 
     const profile = await Profile.findByPk(profileId);
-
     if (!profile) throw new ApiError(404, "Profile not found");
 
-    if (
-      req.user.role !== "admin" &&
-      profile.user_id !== req.user.user_id
-    ) {
+    if (req.user.role !== "admin" && profile.user_id !== req.user.user_id) {
       throw new ApiError(403, "Access denied");
     }
 
     const reminders = await Reminder.findAll({
       where: { profile_id: profileId },
       include: [{ model: Vaccine, as: "vaccine" }],
-      order: [["due_date", "ASC"]],
+      order: [["start_time", "ASC"]],
     });
+
     await logAction(
       req.user.user_id,
       "FETCHED_REMINDERS",
@@ -106,10 +86,41 @@ const getReminders = async (req, res, next) => {
       `Fetched reminders for profile ${profileId}`
     );
 
+    // Group reminders
+    const grouped = {
+      compulsory: reminders.filter(r => r.vaccine?.category === "Compulsory"),
+      recommended: reminders.filter(r => r.vaccine?.category === "Recommended"),
+    };
+
+    // Summary counts
+    const today = new Date();
+    const todayStart = new Date(today.setHours(0, 0, 0, 0));
+    const todayEnd = new Date(today.setHours(23, 59, 59, 999));
+
+    const summary = {
+      total: reminders.length,
+      today: reminders.filter(r =>
+        r.start_time >= todayStart && r.start_time <= todayEnd
+      ).length,
+      due: reminders.filter(r => r.status === "Due").length,
+      overdue: reminders.filter(r => r.status === "Overdue").length,
+    };
+
+    // Recent notifications (last 10 actions)
+    const notifications = await AuditLog.findAll({
+      where: { profile_id: profileId },
+      order: [["created_at", "DESC"]],
+      limit: 10,
+    });
+
     return sendResponse(res, {
       success: true,
       message: "Reminders fetched successfully",
-      data: reminders,
+      data: {
+        summary,
+        grouped,
+        notifications,
+      },
     });
 
   } catch (error) {
@@ -117,55 +128,44 @@ const getReminders = async (req, res, next) => {
   }
 };
 
-
 // UPDATE REMINDER (with ownership check + audit log)
+/* ====== UPDATE REMINDER ================= */
 const updateReminder = async (req, res, next) => {
   try {
-
     const profileId = req.user.role === "admin"
       ? req.params.profileId
       : req.activeProfile.profile_id;
 
     const { reminderId } = req.params;
-    const { vaccine_id, due_date, status } = req.body;
+    const { vaccine_id, start_time, end_time, status, recurrence_rule, external_event_id } = req.body;
 
     const profile = await Profile.findByPk(profileId);
-
     if (!profile) throw new ApiError(404, "Profile not found");
 
-    if (
-      req.user.role !== "admin" &&
-      profile.user_id !== req.user.user_id
-    ) {
+    if (req.user.role !== "admin" && profile.user_id !== req.user.user_id) {
       throw new ApiError(403, "Access denied");
     }
 
     const reminder = await Reminder.findByPk(reminderId);
-
     if (!reminder || reminder.profile_id !== parseInt(profileId)) {
       throw new ApiError(404, "Reminder not found");
     }
 
-    await reminder.update({ vaccine_id, due_date, status });
-    
+    await reminder.update({
+      vaccine_id,
+      start_time,
+      end_time,
+      recurrence_rule,
+      external_event_id,
+      status,
+    });
+
     await logAction(
       req.user.user_id,
       "USER_UPDATED_REMINDER",
       "reminders",
       reminder.reminder_id,
       `Updated reminder ${reminder.reminder_id}`
-    );
-
-    await reminderQueue.add(
-      "sendEmail",
-      { profileId },
-      {
-        jobId: `reminder-${profileId}-${todayString()}`,
-        removeOnComplete: true,
-        removeOnFail: true,
-        attempts: 3,
-        backoff: { type: "exponential", delay: 60000 },
-      }
     );
 
     return sendResponse(res, {
@@ -209,8 +209,6 @@ const generateOverdueReminders = async (profileId) => {
     }
   }
 };
-
-
 
 /* ================= DELETE REMINDER ================= */
 

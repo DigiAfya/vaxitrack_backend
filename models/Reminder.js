@@ -20,9 +20,25 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
 
-      due_date: {
+      // New fields for calendar integration
+      start_time: {
         type: DataTypes.DATE,
         allowNull: false,
+      },
+
+      end_time: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+
+      recurrence_rule: {
+        type: DataTypes.STRING, // e.g. "RRULE:FREQ=WEEKLY;BYDAY=MO"
+        allowNull: true,
+      },
+
+      external_event_id: {
+        type: DataTypes.STRING, // Google/Outlook event ID
+        allowNull: true,
       },
 
       status: {
