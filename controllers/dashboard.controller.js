@@ -17,7 +17,7 @@ const getDashboard = async (req, res, next) => {
     const statuses = await VaccineStatus.findAll({
       where: { profile_id: id },
       include: [{ model: Vaccine, as: "vaccine" }],
-      order: [["due_date", "ASC"]],
+      order: [["next_due_date", "ASC"]],
     });
 
     if (!statuses || statuses.length === 0) {
@@ -40,8 +40,8 @@ const getDashboard = async (req, res, next) => {
           break;
         case "Due":
           dashboard.due.push(item);
-          if (item.due_date) {
-            const dueDate = new Date(item.due_date);
+          if (item.next_due_date) {
+            const dueDate = new Date(item.next_due_date);
             const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
             if (diffDays <= 7) {
               dashboard.priorityCounts.medium += 1;
@@ -92,8 +92,8 @@ const listAllDashboards = async (req, res, next) => {
           }
         : undefined,
       order: [
-        sort === "due_date"
-          ? [sequelize.literal('"VaccineStatuses"."due_date"'), order]
+        sort === "next_due_date"
+          ? [sequelize.literal('"VaccineStatuses"."next_due_date"'), order]
           : sort === "email"
           ? [User, "email", order]
           : ["name", order], // default sort by profile name
@@ -111,7 +111,7 @@ const listAllDashboards = async (req, res, next) => {
       const statuses = await VaccineStatus.findAll({
         where: { profile_id: profile.profile_id },
         include: [{ model: Vaccine, as: "vaccine" }],
-        order: [["due_date", "ASC"]],
+        order: [["next_due_date", "ASC"]],
       });
 
       const dashboard = {
@@ -129,8 +129,8 @@ const listAllDashboards = async (req, res, next) => {
             break;
           case "Due":
             dashboard.due.push(item);
-            if (item.due_date) {
-              const dueDate = new Date(item.due_date);
+            if (item.next_due_date) {
+              const dueDate = new Date(item.next_due_date);
               const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
               if (diffDays <= 7) {
                 dashboard.priorityCounts.medium += 1;
@@ -191,7 +191,7 @@ const exportDashboards = async (req, res, next) => {
       const statuses = await VaccineStatus.findAll({
         where: { profile_id: profile.profile_id },
         include: [{ model: Vaccine, as: "vaccine" }],
-        order: [["due_date", "ASC"]],
+        order: [["next_due_date", "ASC"]],
       });
 
       dashboards.push({

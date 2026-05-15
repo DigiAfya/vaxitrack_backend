@@ -5,6 +5,7 @@ const sendResponse = require("../utilities/response.util");
 const ApiError = require("../utilities/ApiErr.util");
 const { sendEmail } = require("../utilities/email.util");
 const { logAction } = require("../utilities/AuditLog.util");
+const { AuditLog } = require("../models");
 const { Op } = require("sequelize");
 
 /* ====== CREATE REMINDER ================= */

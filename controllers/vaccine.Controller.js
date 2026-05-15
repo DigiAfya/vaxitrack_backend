@@ -105,7 +105,7 @@ const getVaccines = async (req, res, next) => {
     const { count, rows } = await Vaccine.findAndCountAll({
       limit,
       offset,
-      include: [{ model: VaccineDose, as: "vaccine_doses" }],
+      include: [{ model: VaccineDose, as: "doses" }],
       where: search ? { name: { [Op.like]: `%${search}%` } } : undefined,
       order: [[sort, order]],
     });
@@ -141,7 +141,7 @@ const getVaccineById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const vaccine = await Vaccine.findByPk(id, {
-      include: [{ model: VaccineDose, as: "vaccine_doses" }],
+      include: [{ model: VaccineDose, as: "doses" }],
     });
 
     if (!vaccine) throw new ApiError(404, "Vaccine not found");
@@ -228,7 +228,7 @@ const exportVaccines = async (req, res, next) => {
     } = req.query;
 
     const vaccines = await Vaccine.findAll({
-      include: [{ model: VaccineDose, as: "vaccine_doses" }],
+      include: [{ model: VaccineDose, as: "doses" }],
       where: search ? { name: { [Op.like]: `%${search}%` } } : undefined,
       order: [[sort, order]],
     });
