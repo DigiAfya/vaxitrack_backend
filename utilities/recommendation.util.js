@@ -17,7 +17,7 @@ const getRecommendations = async (profile, filters = {}) => {
   const statuses = await VaccineStatus.findAll({
     where: whereClause,
     include: [{ model: Vaccine, as: "vaccine" }],
-    order: [["due_date", "ASC"]],
+    order: [["next_due_date", "ASC"]],
   });
 
   const recommendations = [];
@@ -25,7 +25,7 @@ const getRecommendations = async (profile, filters = {}) => {
   for (let s of statuses) {
     let priorityLevel = "Low";
     const today = new Date();
-    const dueDate = new Date(s.due_date);
+    const dueDate = new Date(s.next_due_date);
     const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
 
     switch (s.status) {
@@ -44,7 +44,7 @@ const getRecommendations = async (profile, filters = {}) => {
     if (priorityLevel !== "None") {
       const rec = {
         vaccine: s.vaccine.name,
-        due_date: s.due_date,
+        due_date: s.next_due_date,
         status: s.status,
         priority: priorityLevel,
       };

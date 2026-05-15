@@ -243,7 +243,7 @@ const exportVaccines = async (req, res, next) => {
       age_range: v.age_range,
       description: v.description,
       info: v.Info,
-      doses: v.vaccine_doses
+      doses: v.doses
         .map((d) => `Dose ${d.dose_number}: ${d.description || ""}`)
         .join("; "),
       created_at: v.created_at,
