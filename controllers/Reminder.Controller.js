@@ -107,12 +107,29 @@ const getReminders = async (req, res, next) => {
       overdue: reminders.filter(r => r.status === "Overdue").length,
     };
 
-    // Recent notifications (last 10 actions)
-    const notifications = await AuditLog.findAll({
-      where: { profile_id: profileId },
-      order: [["created_at", "DESC"]],
-      limit: 10,
+    // Build notifications from reminders
+    const notifications = reminders.slice(0, 10).map(r => {
+      const vaccineName = r.vaccine ? r.vaccine.name : "Vaccine";
+      let message = "";
+      if (r.status === "Overdue") {
+        message = vaccineName + " vaccination is overdue. Please schedule immediately.";
+      } else if (r.status === "Due") {
+        message = vaccineName + " vaccination is due. Schedule your appointment.";
+      } else if (r.status === "Taken") {
+        message = vaccineName + " vaccination completed. Well done!";
+      } else {
+        message = vaccineName + " vaccination reminder.";
+      }
+      return {
+        id: r.reminder_id,
+        type: r.status ? r.status.toLowerCase() : "info",
+        vaccine: vaccineName,
+        message: message,
+        status: r.status,
+        date: r.start_time || r.created_at,
+      };
     });
+
 
     return sendResponse(res, {
       success: true,
