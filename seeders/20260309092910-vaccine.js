@@ -2,6 +2,7 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete("vaccine_status", null, {});
     await queryInterface.bulkDelete("vaccine_doses", null, {});
     await queryInterface.bulkDelete("vaccines", null, {});
     await queryInterface.sequelize.query('ALTER SEQUENCE vaccines_vaccine_id_seq RESTART WITH 1');
