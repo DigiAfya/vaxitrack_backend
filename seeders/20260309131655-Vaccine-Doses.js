@@ -2,6 +2,7 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete("vaccine_doses", null, {});
     await queryInterface.bulkInsert("vaccine_doses", [
       // BCG
       { vaccine_id: 1, dose_number: 1, recommended_age: "Birth", min_age_days: 0, max_age_days: 30, created_at: new Date(), updated_at: new Date() },
